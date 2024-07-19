@@ -168,6 +168,16 @@ func (g *Game) Move(m *Move) error {
 	return nil
 }
 
+// Move updates the game with the given move.  An error is returned
+// if the game has already been completed.
+func (g *Game) MoveWithoutValidation(m *Move) error {
+	g.moves = append(g.moves, m)
+	g.pos = g.pos.Update(m)
+	g.positions = append(g.positions, g.pos)
+	g.updatePosition()
+	return nil
+}
+
 // MoveStr decodes the given string in game's notation
 // and calls the Move function.  An error is returned if
 // the move can't be decoded or the move is invalid.
@@ -177,6 +187,16 @@ func (g *Game) MoveStr(s string) error {
 		return err
 	}
 	return g.Move(m)
+}
+
+// MoveStr decodes the given string in game's notation
+// and calls the MoveWithoutValidation function.
+func (g *Game) MoveStrWithoutValidation(s string) error {
+	m, err := g.notation.Decode(g.pos, s)
+	if err != nil {
+		return err
+	}
+	return g.MoveWithoutValidation(m)
 }
 
 // ValidMoves returns a list of valid moves in the
