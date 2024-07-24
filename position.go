@@ -97,18 +97,12 @@ func (pos *Position) Update(m *Move) *Position {
 
 // ValidMoves returns a list of valid moves for the position.
 func (pos *Position) ValidMoves() []*Move {
-	if pos.validMoves != nil {
-		return append([]*Move(nil), pos.validMoves...)
-	}
 	pos.validMoves = engine{}.CalcMoves(pos, false, true)
 	return append([]*Move(nil), pos.validMoves...)
 }
 
 // ValidMoves returns a list of valid moves for the position.
 func (pos *Position) ValidMovesReversed() []*Move {
-	if pos.validMoves != nil {
-		return append([]*Move(nil), pos.validMoves...)
-	}
 	pos.validMoves = engine{}.CalcMoves(pos, false, false)
 	return append([]*Move(nil), pos.validMoves...)
 }
