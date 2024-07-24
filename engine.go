@@ -2,11 +2,11 @@ package chess
 
 type engine struct{}
 
-func (engine) CalcMoves(pos *Position, first bool) []*Move {
+func (engine) CalcMoves(pos *Position, first bool, normalDirection bool) []*Move {
 	// generate possible moves
-	moves := standardMoves(pos, first)
+	moves := standardMoves(pos, first, normalDirection)
 	// return moves including castles
-	return append(moves, castleMoves(pos)...)
+	return append(moves, castleMoves(pos, normalDirection)...)
 }
 
 func (engine) Status(pos *Position) Method {
@@ -14,7 +14,7 @@ func (engine) Status(pos *Position) Method {
 	if pos.validMoves != nil {
 		hasMove = len(pos.validMoves) > 0
 	} else {
-		hasMove = len(engine{}.CalcMoves(pos, true)) > 0
+		hasMove = len(engine{}.CalcMoves(pos, true, true)) > 0
 	}
 	if !pos.inCheck && !hasMove {
 		return Stalemate
@@ -28,16 +28,20 @@ var (
 	promoPieceTypes = []PieceType{Queen, Rook, Bishop, Knight}
 )
 
-func standardMoves(pos *Position, first bool) []*Move {
+func standardMoves(pos *Position, first bool, normalDirection bool) []*Move {
 	// compute allowed destination bitboard
+	turn := pos.Turn()
+	if !normalDirection {
+		turn = turn.Other()
+	}
 	bbAllowed := ^pos.board.whiteSqs
-	if pos.Turn() == Black {
+	if turn == Black {
 		bbAllowed = ^pos.board.blackSqs
 	}
 	moves := []*Move{}
 	// iterate through pieces to find possible moves
 	for _, p := range allPieces {
-		if pos.Turn() != p.Color() {
+		if turn != p.Color() {
 			continue
 		}
 		// iterate through possible starting squares for piece
@@ -50,7 +54,7 @@ func standardMoves(pos *Position, first bool) []*Move {
 				continue
 			}
 			// iterate through possible destination squares for piece
-			s2BB := bbForPossibleMoves(pos, p.Type(), Square(s1)) & bbAllowed
+			s2BB := bbForPossibleMoves(pos, p.Type(), Square(s1), normalDirection) & bbAllowed
 			if s2BB == 0 {
 				continue
 			}
@@ -62,7 +66,7 @@ func standardMoves(pos *Position, first bool) []*Move {
 				if (p == WhitePawn && Square(s2).Rank() == Rank8) || (p == BlackPawn && Square(s2).Rank() == Rank1) {
 					for _, pt := range promoPieceTypes {
 						m := &Move{s1: Square(s1), s2: Square(s2), promo: pt}
-						addTags(m, pos)
+						addTags(m, pos, normalDirection)
 						// filter out moves that put king into check
 						if !m.HasTag(inCheck) {
 							moves = append(moves, m)
@@ -73,7 +77,7 @@ func standardMoves(pos *Position, first bool) []*Move {
 					}
 				} else {
 					m := &Move{s1: Square(s1), s2: Square(s2)}
-					addTags(m, pos)
+					addTags(m, pos, normalDirection)
 					// filter out moves that put king into check
 					if !m.HasTag(inCheck) {
 						moves = append(moves, m)
@@ -88,7 +92,7 @@ func standardMoves(pos *Position, first bool) []*Move {
 	return moves
 }
 
-func addTags(m *Move, pos *Position) {
+func addTags(m *Move, pos *Position, normalDirection bool) {
 	p := pos.board.Piece(m.s1)
 	if pos.board.isOccupied(m.s2) {
 		m.addTag(Capture)
@@ -98,35 +102,45 @@ func addTags(m *Move, pos *Position) {
 	// determine if in check after move (makes move invalid)
 	cp := pos.copy()
 	cp.board.update(m)
-	if isInCheck(cp) {
+	if isInCheck(cp, normalDirection) {
 		m.addTag(inCheck)
 	}
 	// determine if opponent in check after move
 	cp.turn = cp.turn.Other()
-	if isInCheck(cp) {
+	if isInCheck(cp, normalDirection) {
 		m.addTag(Check)
 	}
 }
 
-func isInCheck(pos *Position) bool {
+func isInCheck(pos *Position, normalDirection bool) bool {
 	kingSq := pos.board.whiteKingSq
-	if pos.Turn() == Black {
+	turn := pos.Turn()
+	if !normalDirection {
+		turn = turn.Other()
+	}
+	if turn == Black {
 		kingSq = pos.board.blackKingSq
 	}
 	// king should only be missing in tests / examples
 	if kingSq == NoSquare {
 		return false
 	}
-	return squaresAreAttacked(pos, kingSq)
+	return squaresAreAttacked(pos, normalDirection, kingSq)
 }
 
-func squaresAreAttacked(pos *Position, sqs ...Square) bool {
+func squaresAreAttacked(pos *Position, normalDirection bool, sqs ...Square) bool {
 	otherColor := pos.Turn().Other()
+	turn := pos.Turn()
+	if !normalDirection {
+		otherColor = otherColor.Other()
+		turn = turn.Other()
+	}
+
 	occ := ^pos.board.emptySqs
 	for _, sq := range sqs {
 		// hot path check to see if attack vector is possible
 		s2BB := pos.board.blackSqs
-		if pos.Turn() == Black {
+		if turn == Black {
 			s2BB = pos.board.whiteSqs
 		}
 		if ((diaAttack(occ, sq)|hvAttack(occ, sq))&s2BB)|(bbKnightMoves[sq]&s2BB) == 0 {
@@ -157,7 +171,7 @@ func squaresAreAttacked(pos *Position, sqs ...Square) bool {
 			return true
 		}
 		// check pawn attack vector
-		if pos.Turn() == White {
+		if turn == White {
 			capRight := (pos.board.bbBlackPawn & ^bbFileH & ^bbRank1) << 7
 			capLeft := (pos.board.bbBlackPawn & ^bbFileA & ^bbRank1) << 9
 			bb = (capRight | capLeft) & bbForSquare(sq)
@@ -182,7 +196,7 @@ func squaresAreAttacked(pos *Position, sqs ...Square) bool {
 	return false
 }
 
-func bbForPossibleMoves(pos *Position, pt PieceType, sq Square) bitboard {
+func bbForPossibleMoves(pos *Position, pt PieceType, sq Square, normalDirection bool) bitboard {
 	switch pt {
 	case King:
 		return bbKingMoves[sq]
@@ -195,66 +209,74 @@ func bbForPossibleMoves(pos *Position, pt PieceType, sq Square) bitboard {
 	case Knight:
 		return bbKnightMoves[sq]
 	case Pawn:
-		return pawnMoves(pos, sq)
+		return pawnMoves(pos, sq, normalDirection)
 	}
 	return bitboard(0)
 }
 
 // TODO can calc isInCheck twice
-func castleMoves(pos *Position) []*Move {
+func castleMoves(pos *Position, normalDirection bool) []*Move {
 	moves := []*Move{}
-	kingSide := pos.castleRights.CanCastle(pos.Turn(), KingSide)
-	queenSide := pos.castleRights.CanCastle(pos.Turn(), QueenSide)
+	turn := pos.Turn()
+	if !normalDirection {
+		turn = turn.Other()
+	}
+	kingSide := pos.castleRights.CanCastle(turn, KingSide)
+	queenSide := pos.castleRights.CanCastle(turn, QueenSide)
 	// white king side
-	if pos.turn == White && kingSide &&
+	if turn == White && kingSide &&
 		(^pos.board.emptySqs&(bbForSquare(F1)|bbForSquare(G1))) == 0 &&
-		!squaresAreAttacked(pos, F1, G1) &&
+		!squaresAreAttacked(pos, normalDirection, F1, G1) &&
 		!pos.inCheck {
 		m := &Move{s1: E1, s2: G1}
 		m.addTag(KingSideCastle)
-		addTags(m, pos)
+		addTags(m, pos, normalDirection)
 		moves = append(moves, m)
 	}
 	// white queen side
-	if pos.turn == White && queenSide &&
+	if turn == White && queenSide &&
 		(^pos.board.emptySqs&(bbForSquare(B1)|bbForSquare(C1)|bbForSquare(D1))) == 0 &&
-		!squaresAreAttacked(pos, C1, D1) &&
+		!squaresAreAttacked(pos, normalDirection, C1, D1) &&
 		!pos.inCheck {
 		m := &Move{s1: E1, s2: C1}
 		m.addTag(QueenSideCastle)
-		addTags(m, pos)
+		addTags(m, pos, normalDirection)
 		moves = append(moves, m)
 	}
 	// black king side
-	if pos.turn == Black && kingSide &&
+	if turn == Black && kingSide &&
 		(^pos.board.emptySqs&(bbForSquare(F8)|bbForSquare(G8))) == 0 &&
-		!squaresAreAttacked(pos, F8, G8) &&
+		!squaresAreAttacked(pos, normalDirection, F8, G8) &&
 		!pos.inCheck {
 		m := &Move{s1: E8, s2: G8}
 		m.addTag(KingSideCastle)
-		addTags(m, pos)
+		addTags(m, pos, normalDirection)
 		moves = append(moves, m)
 	}
 	// black queen side
-	if pos.turn == Black && queenSide &&
+	if turn == Black && queenSide &&
 		(^pos.board.emptySqs&(bbForSquare(B8)|bbForSquare(C8)|bbForSquare(D8))) == 0 &&
-		!squaresAreAttacked(pos, C8, D8) &&
+		!squaresAreAttacked(pos, normalDirection, C8, D8) &&
 		!pos.inCheck {
 		m := &Move{s1: E8, s2: C8}
 		m.addTag(QueenSideCastle)
-		addTags(m, pos)
+		addTags(m, pos, normalDirection)
 		moves = append(moves, m)
 	}
 	return moves
 }
 
-func pawnMoves(pos *Position, sq Square) bitboard {
+func pawnMoves(pos *Position, sq Square, normalDirection bool) bitboard {
 	bb := bbForSquare(sq)
 	var bbEnPassant bitboard
 	if pos.enPassantSquare != NoSquare {
 		bbEnPassant = bbForSquare(pos.enPassantSquare)
 	}
-	if pos.Turn() == White {
+	turn := pos.Turn()
+	if !normalDirection {
+		turn = turn.Other()
+	}
+	if turn == White {
 		capRight := ((bb & ^bbFileH & ^bbRank8) >> 9) & (pos.board.blackSqs | bbEnPassant)
 		capLeft := ((bb & ^bbFileA & ^bbRank8) >> 7) & (pos.board.blackSqs | bbEnPassant)
 		upOne := ((bb & ^bbRank8) >> 8) & pos.board.emptySqs

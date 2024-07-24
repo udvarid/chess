@@ -100,7 +100,16 @@ func (pos *Position) ValidMoves() []*Move {
 	if pos.validMoves != nil {
 		return append([]*Move(nil), pos.validMoves...)
 	}
-	pos.validMoves = engine{}.CalcMoves(pos, false)
+	pos.validMoves = engine{}.CalcMoves(pos, false, true)
+	return append([]*Move(nil), pos.validMoves...)
+}
+
+// ValidMoves returns a list of valid moves for the position.
+func (pos *Position) ValidMovesReversed() []*Move {
+	if pos.validMoves != nil {
+		return append([]*Move(nil), pos.validMoves...)
+	}
+	pos.validMoves = engine{}.CalcMoves(pos, false, false)
 	return append([]*Move(nil), pos.validMoves...)
 }
 
@@ -173,7 +182,7 @@ func (pos *Position) UnmarshalText(text []byte) error {
 	pos.enPassantSquare = cp.enPassantSquare
 	pos.halfMoveClock = cp.halfMoveClock
 	pos.moveCount = cp.moveCount
-	pos.inCheck = isInCheck(cp)
+	pos.inCheck = isInCheck(cp, true)
 	return nil
 }
 
@@ -278,7 +287,7 @@ func (pos *Position) UnmarshalBinary(data []byte) error {
 	if b&bitsHasEnPassant == 0 {
 		pos.enPassantSquare = NoSquare
 	}
-	pos.inCheck = isInCheck(pos)
+	pos.inCheck = isInCheck(pos, true)
 	return nil
 }
 
