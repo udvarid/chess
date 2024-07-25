@@ -44,14 +44,15 @@ func (cr CastleRights) String() string {
 // Position represents the state of the game without reguard
 // to its outcome.  Position is translatable to FEN notation.
 type Position struct {
-	board           *Board
-	turn            Color
-	castleRights    CastleRights
-	enPassantSquare Square
-	halfMoveClock   int
-	moveCount       int
-	inCheck         bool
-	validMoves      []*Move
+	board             *Board
+	turn              Color
+	castleRights      CastleRights
+	enPassantSquare   Square
+	halfMoveClock     int
+	moveCount         int
+	inCheck           bool
+	validMoves        []*Move
+	validReverseMoves []*Move
 }
 
 const (
@@ -97,14 +98,20 @@ func (pos *Position) Update(m *Move) *Position {
 
 // ValidMoves returns a list of valid moves for the position.
 func (pos *Position) ValidMoves() []*Move {
+	if pos.validMoves != nil {
+		return append([]*Move(nil), pos.validMoves...)
+	}
 	pos.validMoves = engine{}.CalcMoves(pos, false, true)
 	return append([]*Move(nil), pos.validMoves...)
 }
 
 // ValidMoves returns a list of valid moves for the position.
 func (pos *Position) ValidMovesReversed() []*Move {
-	pos.validMoves = engine{}.CalcMoves(pos, false, false)
-	return append([]*Move(nil), pos.validMoves...)
+	if pos.validReverseMoves != nil {
+		return append([]*Move(nil), pos.validReverseMoves...)
+	}
+	pos.validReverseMoves = engine{}.CalcMoves(pos, false, false)
+	return append([]*Move(nil), pos.validReverseMoves...)
 }
 
 // Status returns the position's status as one of the outcome methods.
